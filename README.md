@@ -56,6 +56,10 @@
 │   ├── agents/openai.yaml
 │   ├── scripts/apk_review.py
 │   └── references/
+│       ├── README.md
+│       ├── guidelines/
+│       │   └── by-app-type/
+│       ├── rules/
 │       ├── review-checklist.md
 │       ├── china-baseline.md
 │       └── platform-deltas.md
@@ -71,8 +75,26 @@
 - `skill/`: 面向 OpenAI / Codex / OpenClaw 风格技能体系的主工作目录
 - `skill/SKILL.md`: 技能触发条件、工作流、输出格式与审查规则
 - `skill/scripts/apk_review.py`: APK 静态分析脚本，负责提取结构化事实
-- `skill/references/`: 审核清单、国内市场基线与分市场差异规则
+- `skill/references/guidelines/`: 按应用类型组织的审核清单
+- `skill/references/rules/`: 按风险主题拆分的独立规则卡片
+- `skill/references/README.md`: 引导如何组合使用清单与规则
 - `claude/`: 面向 Claude Code 的适配层，复用同一套分析脚本与规则
+
+## 设计思路
+
+当前 skill 已经从“单份提示词 + 几份说明文档”升级为更容易扩展的分层结构：
+
+- 主 `SKILL.md` 只保留工作流和输出规范
+- 通用检查与垂类检查下沉到 `guidelines/`
+- 具体风险主题拆成独立 `rules/`
+- 输出先按平台判断是否可能通过，再列缺失项，最后给出大写汇总结论
+
+这种结构更适合后续继续扩展：
+
+- 电商类应用
+- 医疗健康类应用
+- 工具类应用
+- 更多中国安卓市场差异化要求
 
 ## 快速开始
 

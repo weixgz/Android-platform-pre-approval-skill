@@ -5,27 +5,28 @@ description: analyze uploaded android apk files and generate a pre-review report
 
 # 国内安卓平台预审skill
 
-Inspect an uploaded `.apk` and produce a practical pre-review report before marketplace submission. Focus on fast, explainable checks that can be derived from the package contents. Treat the output as a heuristic prescreen, not a final legal or store-policy determination.
+Inspect an uploaded `.apk` and produce a practical pre-review report before marketplace submission. Focus on fast, explainable checks that can be derived from the package contents, then combine those facts with layered review playbooks and reusable rule cards.
+
+Treat the output as a heuristic prescreen, not a final legal or store-policy determination.
 
 ## Workflow
 
 1. Confirm the user uploaded an `.apk` file.
 2. Run `scripts/apk_review.py` on the APK to extract package metadata and static review signals.
-3. Read `references/review-checklist.md` for cross-store and Google Play interpretation.
-4. Read `references/china-baseline.md` for a unified domestic Android-store baseline.
-5. Read `references/platform-deltas.md` to tailor the domestic section for huawei appgallery, xiaomi, yingyongbao, vivo, and oppo.
-6. Produce a report that clearly separates:
-   - basic package information
-   - cross-store baseline findings
-   - google play
-   - domestic baseline
-   - huawei appgallery
-   - xiaomi
-   - yingyongbao
-   - vivo
-   - oppo
-   - manual verification needed
-   - overall risk summary
+3. Always load `references/guidelines/by-app-type/all_apps.md`.
+4. Infer one or more app types from the package name, app label, bundled assets, feature modules, or user context, then load the matching app-type guide when relevant:
+   - `references/guidelines/by-app-type/ecommerce.md`
+   - `references/guidelines/by-app-type/health_fitness.md`
+   - `references/guidelines/by-app-type/utilities.md`
+5. Load only the rule cards triggered by the findings or materials. Typical mapping:
+   - package install permission -> `references/rules/permissions/request_install_packages.md`
+   - cleartext transport -> `references/rules/network/cleartext_traffic.md`
+   - privacy prompt or agreement evidence -> `references/rules/privacy/privacy_entry.md`
+   - no deletion or rights signal -> `references/rules/privacy/account_deletion.md`
+   - test or staging URL -> `references/rules/metadata/test_or_staging_domain.md`
+   - exported components -> `references/rules/components/exported_components.md`
+   - domestic storefront material consistency -> `references/rules/storefront/china_material_consistency.md`
+6. Use `references/platform-deltas.md` for Google Play and the domestic-store-specific pass/fail framing.
 7. Be explicit about what was verified from the APK and what still requires screenshots, runtime testing, store listing text, privacy policy pages, developer-entity information, or backend behavior.
 
 ## Report Rules
@@ -39,6 +40,7 @@ Inspect an uploaded `.apk` and produce a practical pre-review report before mark
 - Do not invent privacy-policy contents, consent flows, account deletion flows, or developer-entity relationships from the APK alone. Mark those as manual verification unless explicit evidence exists in strings or assets.
 - For domestic stores, always produce one shared baseline section first, then note only the extra store-specific deltas in each store section.
 - If a store-specific section adds nothing beyond the domestic baseline, say `no extra static risk beyond the domestic baseline`.
+- Prefer app-type-specific reasoning over generic speculation. If the app looks like ecommerce or health, say so and then judge whether the permissions actually fit that profile.
 
 ## Severity Model
 
@@ -49,105 +51,55 @@ Use this severity model:
 - `manual verification needed`: cannot be determined from static APK inspection alone.
 - `info`: noteworthy but not risky.
 
-## What To Check
+## Playbook Strategy
 
-### 1. Basic package information
+Use the documents like this:
 
-Summarize:
-- application id / package name
-- version code and version name
-- min sdk, target sdk, compile sdk if available
-- app label
-- debuggable/test-only/profileable flags when detectable
-- whether network security config is declared
-- whether cleartext traffic is permitted
+- app-type guides define expected feature-to-permission fit
+- rule cards explain how to reason about a specific issue
+- platform deltas explain how to phrase the result for each store
 
-### 2. Cross-store baseline
-
-Summarize reusable findings that matter across most stores:
-- debug or test packaging
-- cleartext traffic and network config exposure
-- sensitive permissions and whether they plausibly fit core features
-- risky components or exported surfaces
-- placeholder copy, staging endpoints, and obvious deceptive-update wording
-
-### 3. Google Play
-
-Use `references/review-checklist.md` to focus on:
-- sensitive permissions and special access
-- device or network abuse hints
-- transparency gaps around privacy, consent, and deletion signals
-
-### 4. Domestic baseline
-
-Use `references/china-baseline.md` to focus on:
-- privacy notice and explicit choice hints
-- permission necessity and proportionality
-- user-rights hints such as account deletion, revoke authorization, complaint/contact channels
-- release-quality issues that often trigger manual review
-
-### 5. Store-specific deltas
-
-Use `references/platform-deltas.md` and only add differences beyond the domestic baseline:
-- `huawei appgallery`: privacy-policy url readiness, listing/package consistency, higher burden of explanation materials
-- `xiaomi`: contextual permission requests, denial handling, separate permission declarations or proofs
-- `yingyongbao`: privacy-policy accessibility, developer-entity/privacy-policy consistency, conservative evidence threshold
-- `vivo`: conservative review of sensitive permissions, privacy entry points, and listing/runtime consistency
-- `oppo`: minimum-necessary permissions, privacy-policy url quality, and high-risk capabilities such as vpn, accessibility, overlay, device admin, install packages, or broad package visibility
-
-### 6. Manual verification needed
-
-Always include manual-review items for anything that static APK inspection cannot prove, especially:
-- first-launch privacy dialog correctness
-- whether permissions are requested only in context
-- whether refusal of a permission still allows reasonable app use
-- store-listing text, screenshots, category, and declared feature descriptions
-- privacy-policy url validity and ownership
-- account deletion flow and user-rights response paths
+Do not load every rule card by default. Load only the ones triggered by the APK findings or uploaded materials.
 
 ## Output Format
 
 Use this template:
 
 ```markdown
-# android app prescreen report
+# platform results
 
-## basic package information
+## google play: likely pass / needs rectification / high risk of rejection
+- missing or failing point 1
+- missing or failing point 2
+
+## huawei appgallery: likely pass / needs rectification / high risk of rejection
 - ...
 
-## cross-store baseline findings
+## xiaomi: likely pass / needs rectification / high risk of rejection
 - ...
 
-## google play
+## yingyongbao: likely pass / needs rectification / high risk of rejection
 - ...
 
-## domestic baseline
+## vivo: likely pass / needs rectification / high risk of rejection
 - ...
 
-## huawei appgallery
+## oppo: likely pass / needs rectification / high risk of rejection
 - ...
 
-## xiaomi
-- ...
+## shared evidence
+- basic package information
+- app-type inference
+- high-impact permissions
+- risky transport or metadata findings
+- notable exported components
 
-## yingyongbao
-- ...
+## missing items
+- items that still need manual verification or material review
 
-## vivo
-- ...
-
-## oppo
-- ...
-
-## manual verification needed
-- ...
-
-## overall risk summary
-- overall assessment: low / medium / high
-- google play readiness: low / medium / high risk
-- domestic stores readiness: low / medium / high risk
-- rationale: ...
-- recommended next actions: ...
+## final summary
+LIKELY TO PASS / NEEDS RECTIFICATION / HIGH RISK OF REJECTION
+TOP RISKS: ...
 ```
 
 ## Running the Analyzer
@@ -169,6 +121,8 @@ Then rerun the analyzer.
 ## Resources
 
 - `scripts/apk_review.py`: static APK analyzer that extracts metadata, permissions, exported components, strings, and network indicators.
-- `references/review-checklist.md`: cross-store and Google Play-oriented review checklist.
-- `references/china-baseline.md`: shared domestic Android-store baseline.
+- `references/guidelines/by-app-type/`: layered app-type playbooks.
+- `references/rules/`: reusable rule cards for specific issues.
+- `references/review-checklist.md`: compatibility index that points to the new structure.
+- `references/china-baseline.md`: domestic-store reminder that points to the new structure.
 - `references/platform-deltas.md`: store-specific differences for huawei appgallery, xiaomi, yingyongbao, vivo, and oppo.
