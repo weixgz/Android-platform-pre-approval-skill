@@ -1,95 +1,191 @@
-# Android App Prescreen
+# Android 应用 APK 预审仓库
 
-A GitHub-friendly repository layout for an APK prescreen skill that reviews uploaded Android APKs and produces a multi-market pre-review report.
+一个面向 Android 应用提审前检查场景的技能仓库，用于对 `.apk` 安装包进行静态预审，并输出适用于多应用市场的风险提示报告。
 
-## What this repo contains
+该项目的目标不是替代人工审核、法务判断或市场终审，而是在提交前尽早发现明显风险，帮助研发、产品、合规或运营团队更高效地完成自查。
 
-- `skill/` — the OpenAI/Codex/OpenClaw-oriented skill bundle
-- `README.md` — repository overview and usage notes
+## 项目定位
 
-Inside `skill/`:
+本仓库聚焦于 APK 静态分析与审核准备，适合以下场景：
 
-- `SKILL.md` — trigger conditions and workflow instructions
-- `agents/openai.yaml` — OpenAI skill UI metadata
-- `scripts/apk_review.py` — static APK analysis script
-- `references/` — review checklists and market-specific guidance
+- 在提交 Google Play 或国内 Android 应用市场前做一次快速预检查
+- 对权限、组件暴露、网络配置、文案资源等做基础风险排查
+- 为人工审核提供结构化的预审报告与核查清单
+- 作为 OpenAI / Codex 技能包或 Claude Code 适配工程持续维护
 
-## Supported review scopes
+## 核心能力
 
-The skill is designed to check:
+当前支持的预审范围包括：
 
-- basic package information
-- permission risk
-- component exposure
-- privacy/compliance hints
-- resource and copy checks
-- overall risk summary
+- 基础包信息提取
+- 敏感权限与特殊能力识别
+- Activity / Service / Receiver / Provider 暴露面检查
+- 隐私、授权、账号注销等合规相关静态信号识别
+- 测试文案、占位文案、可疑域名、明文传输等发布质量问题提示
+- 面向 Google Play 与国内主流 Android 市场的差异化预审建议
 
-It outputs:
-- cross-store findings
-- Google Play findings
-- China domestic baseline findings
-- per-store deltas for Huawei, Xiaomi, Yingyongbao, vivo, and OPPO
-- manual verification items
+预审输出通常会覆盖以下维度：
 
-## Repository usage
+- 跨市场通用风险
+- Google Play 相关风险
+- 国内应用市场通用基线
+- 华为应用市场、Xiaomi、应用宝、vivo、OPPO 的差异化要点
+- 需要人工继续核验的事项
+- 总体风险结论与后续建议
 
-### Option 1: Use as an OpenAI/Codex skill
-Zip the contents of `skill/` (not the repository root) into `skill.zip`, then upload that package where Skills are supported.
+## 能力边界
 
-### Option 2: Store and iterate in GitHub
-Use this repo as the source of truth:
-- edit `skill/SKILL.md`
-- update scripts under `skill/scripts/`
-- update rules under `skill/references/`
-- re-package `skill/` when you want a distributable `skill.zip`
+本项目基于 APK 静态内容进行分析，结论应视为“预审信号”而非最终审核结论。以下内容通常无法仅凭 APK 静态分析完全确认：
 
-## Suggested Git workflow
+- 商店页文案、截图、分类与声明信息
+- 隐私政策页面的可访问性、真实性与归属关系
+- 首次启动时的授权弹窗与真实交互流程
+- 权限拒绝后的降级体验
+- 账号注销、投诉反馈、用户权利响应链路
+- 服务端行为、远程开关、动态下发逻辑
 
-```bash
-git init
-git add .
-git commit -m "Initial Android app prescreen skill"
+因此，建议将本项目输出与人工测试、合规审查、提审材料核对结合使用。
+
+## 仓库结构
+
+```text
+.
+├── README.md
+├── skill/
+│   ├── SKILL.md
+│   ├── agents/openai.yaml
+│   ├── scripts/apk_review.py
+│   └── references/
+│       ├── review-checklist.md
+│       ├── china-baseline.md
+│       └── platform-deltas.md
+└── claude/
+    ├── CLAUDE.md
+    └── .claude/
+        ├── agents/android-app-prescreen.md
+        └── commands/apk-prescreen.md
 ```
 
-When you update review logic:
+各目录职责如下：
+
+- `skill/`: 面向 OpenAI / Codex / OpenClaw 风格技能体系的主工作目录
+- `skill/SKILL.md`: 技能触发条件、工作流、输出格式与审查规则
+- `skill/scripts/apk_review.py`: APK 静态分析脚本，负责提取结构化事实
+- `skill/references/`: 审核清单、国内市场基线与分市场差异规则
+- `claude/`: 面向 Claude Code 的适配层，复用同一套分析脚本与规则
+
+## 快速开始
+
+### 方式一：作为本地分析工具使用
+
+1. 安装依赖：
 
 ```bash
-git add .
-git commit -m "Refine APK prescreen rules"
+python -m pip install androguard
 ```
 
-## Cross-platform note
+2. 运行静态分析脚本：
 
-- **OpenAI / Codex**: use `skill/` directly as the packaged skill source
-- **OpenClaw**: usually compatible with the same skill layout, but validate any frontmatter formatting constraints in that environment
-- **Claude Code**: this repo does not yet include a native Claude layout; add a separate `CLAUDE.md` / `.claude/agents/` adapter if needed
+```bash
+python skill/scripts/apk_review.py /path/to/app.apk --output /tmp/apk_review.json
+```
 
-## Maintenance tips
+3. 结合以下资料生成完整预审报告：
 
-- keep trigger conditions in `skill/SKILL.md` frontmatter description
-- keep deterministic parsing logic in `skill/scripts/`
-- keep long-form policy/checklist content in `skill/references/`
-- treat static APK findings as prescreen signals, not final store decisions
+- `skill/SKILL.md`
+- `skill/references/review-checklist.md`
+- `skill/references/china-baseline.md`
+- `skill/references/platform-deltas.md`
 
-## License / policy sources
+### 方式二：作为 OpenAI / Codex 技能包使用
 
-This repository packages a workflow and checklists derived from publicly documented store policies and review guidance, plus static APK inspection logic. Some policy checks require manual verification because APK-only inspection cannot confirm storefront metadata, hosted privacy pages, screenshots, or runtime consent flows.
+如需打包为技能上传使用，请将 `skill/` 目录内容单独打包，而不是打包整个仓库根目录。
 
-## Claude Code adapter
+示意：
 
-This repository now includes a Claude Code-oriented adapter under `claude/`.
+```bash
+cd skill
+zip -r skill.zip .
+```
 
-Files:
-- `claude/CLAUDE.md`
-- `claude/.claude/agents/android-app-prescreen.md`
-- `claude/.claude/commands/apk-prescreen.md`
+### 方式三：作为 Claude Code 适配工程使用
 
-Suggested use:
-- open the `claude/` directory as the working project in Claude Code
-- let the subagent or command call the shared script at `../skill/scripts/apk_review.py`
-- keep the policy checklists shared under `skill/references/`
+如果你的工作环境是 Claude Code，可以直接使用 `claude/` 目录作为入口：
 
-This keeps one repository with:
-- `skill/` for OpenAI / Codex / OpenClaw style packaging
-- `claude/` for Claude Code style entrypoints
+- `claude/.claude/agents/android-app-prescreen.md`：可复用的子代理定义
+- `claude/.claude/commands/apk-prescreen.md`：命令式入口
+- `../skill/scripts/apk_review.py`：共享静态分析脚本
+
+## 输出内容说明
+
+建议报告至少包含以下模块：
+
+- 基础包信息
+- 跨市场通用检查结果
+- Google Play 风险提示
+- 国内市场通用基线检查结果
+- 华为应用市场差异项
+- Xiaomi 差异项
+- 应用宝差异项
+- vivo 差异项
+- OPPO 差异项
+- 需要人工核验的事项
+- 总体风险总结与建议动作
+
+其中需要特别强调两点：
+
+- 结论应尽量基于 APK 中可证实的事实，例如 Manifest 字段、权限名、导出组件、字符串资源、域名或网络配置
+- 对无法静态确认的内容，应明确标注为“需要人工核验”，避免给出过度确定的判断
+
+## 当前检查重点
+
+脚本与规则当前重点关注以下风险类型：
+
+- `debuggable`、`testOnly`、备份开关、明文流量等发布配置问题
+- 敏感权限与高风险能力声明是否存在
+- 组件导出面是否存在潜在暴露风险
+- 资源文案中是否出现测试、占位、隐私、授权、账号注销等关键信号
+- 是否存在本地地址、测试域名、可疑更新文案、动态更新或静默安装相关信号
+
+## 适用平台
+
+本仓库当前主要覆盖以下平台或工作流：
+
+- OpenAI / Codex
+- OpenClaw
+- Claude Code
+- Google Play 提审前预检查
+- 国内 Android 应用市场提审前预检查
+
+国内市场规则目前重点参考以下方向：
+
+- 华为应用市场
+- Xiaomi
+- 应用宝
+- vivo
+- OPPO
+
+## 维护建议
+
+为了保持项目清晰、可持续迭代，建议按以下方式维护：
+
+- 将触发规则、输出规范和人工审查原则集中维护在 `skill/SKILL.md`
+- 将确定性的 APK 提取与静态判断逻辑维护在 `skill/scripts/`
+- 将政策基线、核查清单和平台差异维护在 `skill/references/`
+- 每次调整规则后，优先同步更新 README 与技能说明，避免仓库说明与实际逻辑脱节
+
+## 适合谁使用
+
+这个项目尤其适合以下角色作为提审前工具链的一部分：
+
+- Android 开发工程师
+- 测试工程师
+- 产品经理
+- 运营与上架团队
+- 隐私合规或审核支持团队
+
+## 说明
+
+本仓库整理的是一套面向 Android APK 的静态预审工作流、规则集合与适配入口。它能够帮助团队更早发现问题、减少反复提审，但不能替代最终的市场审核、法律判断或完整人工验收。
+
+如果你希望将它作为长期维护的仓库使用，推荐把这里作为“规则源仓库”，持续迭代 `skill/` 下的脚本与规则，再按需要打包成分发版本。
