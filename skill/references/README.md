@@ -4,6 +4,7 @@ This directory is organized into two layers:
 
 - `guidelines/`: app-type playbooks that describe what to review for a class of app
 - `rules/`: reusable rule cards for specific risk themes, permissions, metadata issues, or store expectations
+ - `runtime-smoke.md`: optional runtime evidence checklist for dynamic verification
 
 Recommended usage:
 

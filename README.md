@@ -1,6 +1,6 @@
 # 国内安卓平台预审skill
 
-一个面向 Android 应用提审前检查场景的技能仓库，用于对 `.apk` 安装包进行静态预审，并输出适用于多应用市场的风险提示报告。
+一个面向 Android 应用提审前检查场景的技能仓库，用于对 `.apk` 安装包进行 **静态预审**，并在需要时追加 **动态运行验证（可选）**，输出适用于多应用市场的风险提示报告。
 
 该项目的目标不是替代人工审核、法务判断或市场终审，而是在提交前尽早发现明显风险，帮助研发、产品、合规或运营团队更高效地完成自查。
 
@@ -17,12 +17,19 @@
 
 当前支持的预审范围包括：
 
-- 基础包信息提取
+- 基础包信息提取（包名/版本/SDK/主入口等）
 - 敏感权限与特殊能力识别
 - Activity / Service / Receiver / Provider 暴露面检查
 - 隐私、授权、账号注销等合规相关静态信号识别
 - 测试文案、占位文案、可疑域名、明文传输等发布质量问题提示
 - 面向 Google Play 与国内主流 Android 市场的差异化预审建议
+
+动态运行验证（可选）会覆盖更偏“运行态”的问题定位，例如：
+
+- “看视频得积分/激励视频”是否能加载、是否能播放完成
+- 隐私政策/用户协议是否常驻可访问（应用内入口）
+- 账号注销/删除功能是否可达且可完成
+- 权限是否按场景弹出、拒绝后是否有降级路径（需要录屏或日志辅助）
 
 预审输出通常会覆盖以下维度：
 
@@ -46,6 +53,13 @@
 
 因此，建议将本项目输出与人工测试、合规审查、提审材料核对结合使用。
 
+## 两段式交付（推荐）
+
+为了降低“静态推断”和“运行事实”混在一起导致的误读，建议输出按两段组织：
+
+1. **静态预审（APK）**：基于 Manifest/资源/DEX 字符串的可证事实与风险信号。
+2. **动态验证（运行态，可选）**：基于真机/模拟器的截图与 logcat 证据，验证“能不能跑、能不能加载、权限/隐私/注销路径是否可达”。
+
 ## 仓库结构
 
 ```text
@@ -55,6 +69,7 @@
 │   ├── SKILL.md
 │   ├── agents/openai.yaml
 │   ├── scripts/apk_review.py
+│   ├── scripts/runtime_smoke.py
 │   └── references/
 │       ├── README.md
 │       ├── guidelines/
@@ -112,7 +127,17 @@ python -m pip install androguard
 python skill/scripts/apk_review.py /path/to/app.apk --output /tmp/apk_review.json
 ```
 
-3. 结合以下资料生成完整预审报告：
+3. （可选）运行动态验证脚本，生成运行态证据：
+
+```bash
+# 安装 + 启动 + 清空 logcat（准备阶段）
+python skill/scripts/runtime_smoke.py prep /path/to/app.apk
+
+# 在真机/模拟器里复现目标路径后，收集截图与日志（收集阶段）
+python skill/scripts/runtime_smoke.py collect --package <package.name>
+```
+
+4. 结合以下资料生成完整预审报告：
 
 - `skill/SKILL.md`
 - `skill/references/review-checklist.md`

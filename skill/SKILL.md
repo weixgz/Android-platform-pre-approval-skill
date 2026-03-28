@@ -5,11 +5,11 @@ description: analyze uploaded android apk files and generate a pre-review report
 
 # 国内安卓平台预审skill
 
-Inspect an uploaded `.apk` and produce a practical pre-review report before marketplace submission. Focus on fast, explainable checks that can be derived from the package contents, then combine those facts with layered review playbooks and reusable rule cards.
+对上传的 `.apk` 做提审前“静态预审 + 动态运行验证（可选）”，输出可落地的风险提示报告。
 
-Treat the output as a heuristic prescreen, not a final legal or store-policy determination.
+输出属于“预审信号”，不能替代最终的市场审核/法务判断。
 
-## Workflow
+## 工作流（静态预审）
 
 1. Confirm the user uploaded an `.apk` file.
 2. Run `scripts/apk_review.py` on the APK to extract package metadata and static review signals.
@@ -29,6 +29,17 @@ Treat the output as a heuristic prescreen, not a final legal or store-policy det
 6. Use `references/platform-deltas.md` for Google Play and the domestic-store-specific pass/fail framing.
 7. Be explicit about what was verified from the APK and what still requires screenshots, runtime testing, store listing text, privacy policy pages, developer-entity information, or backend behavior.
 
+## 工作流（动态运行验证，可选）
+
+当用户明确提出“能不能运行复现/视频是否加载/权限弹窗是否合理/注销入口是否存在”等问题时，补一段动态验证，用于把“需要人工核验”的点尽可能变成可复核证据。
+
+1. 确认已连接真机或模拟器：`adb devices -l` 能看到 `device` 状态。
+2. 使用 `scripts/runtime_smoke.py` 做标准化准备：
+   - `prep`：安装、启动、清空 logcat
+   - `collect`：截图、dump logcat、提取网络/播放器错误与视频 URL 证据
+3. 让用户在设备上复现路径（或用截图 + 坐标点击协助进入目标页面）。
+4. 把动态结果写入“动态运行验证”段落：通过/不通过点、证据、仍需补充的材料（真机/弱网/多机型等）。
+
 ## Report Rules
 
 - Keep findings concrete and evidence-based.
@@ -41,6 +52,9 @@ Treat the output as a heuristic prescreen, not a final legal or store-policy det
 - For domestic stores, always produce one shared baseline section first, then note only the extra store-specific deltas in each store section.
 - If a store-specific section adds nothing beyond the domestic baseline, say `no extra static risk beyond the domestic baseline`.
 - Prefer app-type-specific reasoning over generic speculation. If the app looks like ecommerce or health, say so and then judge whether the permissions actually fit that profile.
+ - 动态验证要明确区分：
+   - `已验证`：我在设备上跑到的页面/截图/日志证据支持的结论
+   - `未验证`：仍需真机、弱网、多机型或更多路径复现的事项
 
 ## Severity Model
 
@@ -66,7 +80,9 @@ Do not load every rule card by default. Load only the ones triggered by the APK 
 Use this template:
 
 ```markdown
-# platform results
+# static prescreen (apk)
+
+## platform results (static)
 
 ## google play: likely pass / needs rectification / high risk of rejection
 - missing or failing point 1
@@ -87,15 +103,44 @@ Use this template:
 ## oppo: likely pass / needs rectification / high risk of rejection
 - ...
 
-## shared evidence
+## shared evidence (static)
 - basic package information
 - app-type inference
 - high-impact permissions
 - risky transport or metadata findings
 - notable exported components
 
-## missing items
+## missing items (static)
 - items that still need manual verification or material review
+
+# dynamic verification (runtime, optional)
+
+## platform results (dynamic)
+## google play: likely pass / needs rectification / high risk of rejection
+- verified or failing point 1
+
+## huawei appgallery: likely pass / needs rectification / high risk of rejection
+- ...
+
+## xiaomi: likely pass / needs rectification / high risk of rejection
+- ...
+
+## yingyongbao: likely pass / needs rectification / high risk of rejection
+- ...
+
+## vivo: likely pass / needs rectification / high risk of rejection
+- ...
+
+## oppo: likely pass / needs rectification / high risk of rejection
+- ...
+
+## runtime evidence
+- device / emulator information
+- verified navigation path (if applicable)
+- screenshots (if provided) and key log lines (network/player)
+
+## missing items (dynamic)
+- items that still need manual verification on real devices / weak networks / more scenarios
 
 ## final summary
 LIKELY TO PASS / NEEDS RECTIFICATION / HIGH RISK OF REJECTION
@@ -108,6 +153,16 @@ Run:
 
 ```bash
 python scripts/apk_review.py /path/to/app.apk --output /tmp/apk_review.json
+```
+
+## Running The Runtime Smoke Test (Optional)
+
+Dynamic preparation and evidence collection:
+
+```bash
+python scripts/runtime_smoke.py prep /path/to/app.apk
+# ... reproduce the issue on device ...
+python scripts/runtime_smoke.py collect --package <package.name>
 ```
 
 If the script reports that `androguard` is missing, install it first:
