@@ -3,7 +3,7 @@ name: android-app-prescreen
 description: analyze uploaded android apk files and generate a pre-review report for common app-store submission risks. use when the user uploads an .apk and wants prescreen feedback on package metadata, permission risk, component exposure, privacy/compliance hints, resource and copy checks, or store-specific review preparation for google play, huawei appgallery, xiaomi, yingyongbao, vivo, or oppo.
 ---
 
-# Android App Prescreen
+# 国内安卓平台预审skill
 
 Inspect an uploaded `.apk` and produce a practical pre-review report before marketplace submission. Focus on fast, explainable checks that can be derived from the package contents. Treat the output as a heuristic prescreen, not a final legal or store-policy determination.
 

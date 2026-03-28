@@ -69,16 +69,30 @@ def parse_args() -> argparse.Namespace:
 
 def load_apk(apk_path: str):
     try:
+        from loguru import logger
         from androguard.core.apk import APK
     except Exception as exc:  # pragma: no cover
         raise SystemExit(
             "androguard is required. install it with: python -m pip install androguard"
         ) from exc
+    logger.remove()
+    logger.add(sys.stderr, level="ERROR")
     return APK(apk_path)
 
 
 def safe_get(value: Any, default: Any = None) -> Any:
     return value if value not in (None, "") else default
+
+
+def manifest_attr(
+    apk, tag_name: str, attribute: str, default: Any = None, **attribute_filter
+) -> Any:
+    try:
+        return safe_get(
+            apk.get_attribute_value(tag_name, attribute, **attribute_filter), default
+        )
+    except Exception:
+        return default
 
 
 def permission_flags(permission: str) -> dict[str, bool]:
@@ -185,10 +199,13 @@ def component_rows(apk, kind: str) -> list[dict[str, Any]]:
     names = getters[kind]() or []
     rows = []
     for name in names:
-        try:
-            exported = apk.get_intent_filters(intent_kinds[kind], name) is not None
-        except Exception:
-            exported = None
+        exported = manifest_attr(apk, intent_kinds[kind], "exported", None, name=name)
+        if exported is None:
+            try:
+                filters = apk.get_intent_filters(intent_kinds[kind], name)
+                exported = "implicit_via_intent_filter" if filters else None
+            except Exception:
+                exported = None
         rows.append({"name": name, "exported": exported})
     return rows
 
@@ -216,11 +233,11 @@ def main() -> int:
             "min_sdk": safe_get(apk.get_min_sdk_version()),
             "target_sdk": safe_get(apk.get_target_sdk_version()),
             "main_activity": safe_get(apk.get_main_activity()),
-            "debuggable": safe_get(apk.is_debuggable(), False),
-            "allows_backup": safe_get(apk.get_element("application", "allowBackup")),
-            "network_security_config": safe_get(apk.get_element("application", "networkSecurityConfig")),
-            "uses_cleartext_traffic": safe_get(apk.get_element("application", "usesCleartextTraffic")),
-            "test_only": safe_get(apk.get_element("application", "testOnly")),
+            "debuggable": manifest_attr(apk, "application", "debuggable", False),
+            "allows_backup": manifest_attr(apk, "application", "allowBackup"),
+            "network_security_config": manifest_attr(apk, "application", "networkSecurityConfig"),
+            "uses_cleartext_traffic": manifest_attr(apk, "application", "usesCleartextTraffic"),
+            "test_only": manifest_attr(apk, "application", "testOnly"),
         },
         "permissions": permission_details,
         "components": {
