@@ -1,0 +1,246 @@
+#!/usr/bin/env python3
+"""Static APK prescreen analyzer.
+
+Usage:
+  python scripts/apk_review.py app.apk --output report.json
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+from pathlib import Path
+from typing import Any
+
+SENSITIVE_PERMISSION_KEYWORDS = [
+    "ACCESS_FINE_LOCATION",
+    "ACCESS_COARSE_LOCATION",
+    "ACCESS_BACKGROUND_LOCATION",
+    "READ_CONTACTS",
+    "WRITE_CONTACTS",
+    "READ_CALL_LOG",
+    "WRITE_CALL_LOG",
+    "READ_SMS",
+    "SEND_SMS",
+    "RECEIVE_SMS",
+    "RECORD_AUDIO",
+    "CAMERA",
+    "READ_MEDIA",
+    "READ_EXTERNAL_STORAGE",
+    "WRITE_EXTERNAL_STORAGE",
+    "MANAGE_EXTERNAL_STORAGE",
+    "QUERY_ALL_PACKAGES",
+    "SYSTEM_ALERT_WINDOW",
+    "PACKAGE_USAGE_STATS",
+    "REQUEST_INSTALL_PACKAGES",
+    "BIND_ACCESSIBILITY_SERVICE",
+    "BIND_NOTIFICATION_LISTENER_SERVICE",
+    "SCHEDULE_EXACT_ALARM",
+    "USE_EXACT_ALARM",
+    "POST_NOTIFICATIONS",
+    "READ_PHONE_STATE",
+    "READ_PHONE_NUMBERS",
+]
+
+HIGH_RISK_STRING_PATTERNS = {
+    "placeholder_text": [r"\btest\b", r"\bdemo\b", r"\btodo\b", r"\bsample\b", r"\bdebug\b"],
+    "account_deletion": [r"delete account", r"注销", r"account cancellation", r"remove account"],
+    "privacy_policy": [r"privacy policy", r"隐私政策", r"personal information", r"用户协议"],
+    "consent_flow": [r"agree", r"reject", r"consent", r"授权", r"同意", r"拒绝"],
+    "device_identifier": [r"imei", r"imsi", r"oaid", r"android id", r"mac address", r"boot_id", r"cpuid"],
+    "installed_apps": [r"installed apps", r"app list", r"应用列表"],
+    "silent_install": [r"silent install", r"静默安装", r"auto install", r"自动安装"],
+    "self_update": [r"self update", r"hot update", r"dynamic code", r"热更新", r"补丁包"],
+}
+
+DOMAIN_PATTERN = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
+HOST_PATTERN = re.compile(r"\b(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}\b")
+IP_PATTERN = re.compile(r"\b(?:127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})\b")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("apk_path", help="Path to APK file")
+    parser.add_argument("--output", help="Write JSON report to file")
+    return parser.parse_args()
+
+
+def load_apk(apk_path: str):
+    try:
+        from androguard.core.apk import APK
+    except Exception as exc:  # pragma: no cover
+        raise SystemExit(
+            "androguard is required. install it with: python -m pip install androguard"
+        ) from exc
+    return APK(apk_path)
+
+
+def safe_get(value: Any, default: Any = None) -> Any:
+    return value if value not in (None, "") else default
+
+
+def permission_flags(permission: str) -> dict[str, bool]:
+    return {
+        "sensitive": any(key in permission for key in SENSITIVE_PERMISSION_KEYWORDS),
+        "signature_or_special": any(
+            key in permission
+            for key in [
+                "BIND_",
+                "MANAGE_",
+                "QUERY_ALL_PACKAGES",
+                "REQUEST_INSTALL_PACKAGES",
+                "SYSTEM_ALERT_WINDOW",
+                "PACKAGE_USAGE_STATS",
+                "SCHEDULE_EXACT_ALARM",
+                "USE_EXACT_ALARM",
+            ]
+        ),
+    }
+
+
+def collect_strings(apk) -> list[str]:
+    strings: list[str] = []
+    try:
+        resources = apk.get_android_resources()
+        if resources:
+            for package in resources.get_packages_names():
+                locales = resources.get_resolved_strings()
+                if not locales:
+                    continue
+                for locale_map in locales.values():
+                    if isinstance(locale_map, dict):
+                        for _, text in locale_map.items():
+                            if isinstance(text, str):
+                                strings.append(text)
+    except Exception:
+        pass
+    # Add manifest and file names as a light-weight supplement.
+    try:
+        strings.extend(list(apk.get_files().keys()))
+    except Exception:
+        pass
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in strings:
+        s = item.strip()
+        if len(s) < 3 or len(s) > 500:
+            continue
+        if s not in seen:
+            seen.add(s)
+            cleaned.append(s)
+    return cleaned
+
+
+def scan_string_patterns(strings: list[str]) -> dict[str, list[str]]:
+    results: dict[str, list[str]] = {k: [] for k in HIGH_RISK_STRING_PATTERNS}
+    for text in strings:
+        lowered = text.lower()
+        for category, patterns in HIGH_RISK_STRING_PATTERNS.items():
+            for pattern in patterns:
+                if re.search(pattern, lowered, re.IGNORECASE):
+                    results[category].append(text)
+                    break
+    for key in results:
+        results[key] = results[key][:20]
+    return results
+
+
+def extract_domains(strings: list[str]) -> dict[str, list[str]]:
+    urls: set[str] = set()
+    hosts: set[str] = set()
+    local_or_test: set[str] = set()
+    for text in strings:
+        for url in DOMAIN_PATTERN.findall(text):
+            urls.add(url)
+            if any(token in url.lower() for token in ["localhost", "127.0.0.1", ".local", ".test", "10.", "192.168."]):
+                local_or_test.add(url)
+        for host in HOST_PATTERN.findall(text):
+            hosts.add(host)
+            if any(token in host.lower() for token in ["localhost", ".local", ".test"]):
+                local_or_test.add(host)
+        for ip in IP_PATTERN.findall(text):
+            local_or_test.add(ip)
+    return {
+        "urls": sorted(urls)[:100],
+        "hosts": sorted(hosts)[:100],
+        "local_or_test": sorted(local_or_test)[:50],
+    }
+
+
+def component_rows(apk, kind: str) -> list[dict[str, Any]]:
+    getters = {
+        "activities": apk.get_activities,
+        "services": apk.get_services,
+        "receivers": apk.get_receivers,
+        "providers": apk.get_providers,
+    }
+    intent_kinds = {
+        "activities": "activity",
+        "services": "service",
+        "receivers": "receiver",
+        "providers": "provider",
+    }
+    names = getters[kind]() or []
+    rows = []
+    for name in names:
+        try:
+            exported = apk.get_intent_filters(intent_kinds[kind], name) is not None
+        except Exception:
+            exported = None
+        rows.append({"name": name, "exported": exported})
+    return rows
+
+
+def main() -> int:
+    args = parse_args()
+    apk_file = Path(args.apk_path)
+    if not apk_file.exists():
+        raise SystemExit(f"APK not found: {apk_file}")
+
+    apk = load_apk(str(apk_file))
+    strings = collect_strings(apk)
+    permissions = sorted(set(apk.get_permissions() or []))
+    permission_details = [
+        {"name": perm, **permission_flags(perm)} for perm in permissions
+    ]
+
+    report = {
+        "file": str(apk_file),
+        "package": {
+            "package_name": safe_get(apk.get_package()),
+            "app_name": safe_get(apk.get_app_name()),
+            "version_name": safe_get(apk.get_androidversion_name()),
+            "version_code": safe_get(apk.get_androidversion_code()),
+            "min_sdk": safe_get(apk.get_min_sdk_version()),
+            "target_sdk": safe_get(apk.get_target_sdk_version()),
+            "main_activity": safe_get(apk.get_main_activity()),
+            "debuggable": safe_get(apk.is_debuggable(), False),
+            "allows_backup": safe_get(apk.get_element("application", "allowBackup")),
+            "network_security_config": safe_get(apk.get_element("application", "networkSecurityConfig")),
+            "uses_cleartext_traffic": safe_get(apk.get_element("application", "usesCleartextTraffic")),
+            "test_only": safe_get(apk.get_element("application", "testOnly")),
+        },
+        "permissions": permission_details,
+        "components": {
+            "activities": component_rows(apk, "activities"),
+            "services": component_rows(apk, "services"),
+            "receivers": component_rows(apk, "receivers"),
+            "providers": component_rows(apk, "providers"),
+        },
+        "string_signals": scan_string_patterns(strings),
+        "network_indicators": extract_domains(strings),
+        "file_count": len(apk.get_files() or []),
+    }
+
+    output = json.dumps(report, ensure_ascii=False, indent=2)
+    if args.output:
+        Path(args.output).write_text(output, encoding="utf-8")
+    else:
+        print(output)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
