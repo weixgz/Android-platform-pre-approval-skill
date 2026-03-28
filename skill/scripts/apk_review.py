@@ -11,6 +11,7 @@ import argparse
 import json
 import re
 import sys
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -58,6 +59,16 @@ HIGH_RISK_STRING_PATTERNS = {
 DOMAIN_PATTERN = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
 HOST_PATTERN = re.compile(r"\b(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}\b")
 IP_PATTERN = re.compile(r"\b(?:127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})\b")
+ASSET_URL_PATTERN = re.compile(rb"https?://[^\s\"'<>]+", re.IGNORECASE)
+ASSET_VIDEO_KEYS = [
+    b"video_url",
+    b"videourl",
+    b"playurl",
+    b"play_url",
+    b"m3u8",
+    b".mp4",
+    b"rtmp",
+]
 
 
 def parse_args() -> argparse.Namespace:
@@ -93,6 +104,75 @@ def manifest_attr(
         )
     except Exception:
         return default
+
+
+def scan_text_assets(apk_path: Path) -> dict[str, Any]:
+    """Lightweight scan of bundled web assets for URLs, staging domains, and video keys.
+
+    This does not prove runtime behavior, but it provides actionable hints for smoke tests
+    (e.g. playback endpoints are usually fetched dynamically via API).
+    """
+    if not apk_path.exists():
+        return {}
+
+    url_set: set[str] = set()
+    host_set: set[str] = set()
+    test_domains: set[str] = set()
+    video_keys_found: set[str] = set()
+    files_with_hits: set[str] = set()
+
+    asset_allowlist_re = re.compile(
+        r"^(assets/apps/[^/]+/www/"
+        r"(app-service\.js|app-view\.js|app-config-service\.js|manifest\.json|androidPrivacy\.json|view\.umd\.min\.js)"
+        r"|assets/data/dcloud_properties\.xml)$"
+    )
+
+    def add_url(u: str) -> None:
+        if len(url_set) >= 80:
+            return
+        url_set.add(u)
+        m = re.match(r"^https?://([^/]+)", u, re.IGNORECASE)
+        if m and len(host_set) < 80:
+            host = m.group(1)
+            host_set.add(host)
+            if ".test." in host.lower() or host.lower().endswith(".test"):
+                if len(test_domains) < 50:
+                    test_domains.add(host)
+
+    try:
+        with zipfile.ZipFile(apk_path, "r") as zf:
+            for name in zf.namelist():
+                if not asset_allowlist_re.match(name):
+                    continue
+                try:
+                    data = zf.read(name)
+                except Exception:
+                    continue
+
+                lowered = data.lower()
+                file_hit = False
+
+                for key in ASSET_VIDEO_KEYS:
+                    if key in lowered:
+                        video_keys_found.add(key.decode("utf-8", "ignore"))
+                        file_hit = True
+
+                for m in ASSET_URL_PATTERN.finditer(data):
+                    add_url(m.group(0).decode("utf-8", "ignore"))
+                    file_hit = True
+
+                if file_hit:
+                    files_with_hits.add(name)
+    except Exception:
+        return {}
+
+    return {
+        "urls": sorted(url_set),
+        "hosts": sorted(host_set),
+        "test_domains": sorted(test_domains),
+        "video_keys_found": sorted(video_keys_found),
+        "files_with_hits": sorted(files_with_hits)[:50],
+    }
 
 
 def permission_flags(permission: str) -> dict[str, bool]:
@@ -248,6 +328,7 @@ def main() -> int:
         },
         "string_signals": scan_string_patterns(strings),
         "network_indicators": extract_domains(strings),
+        "asset_signals": scan_text_assets(apk_file),
         "file_count": len(apk.get_files() or []),
     }
 
