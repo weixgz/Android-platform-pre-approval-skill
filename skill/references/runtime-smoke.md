@@ -8,6 +8,8 @@ This note is for the **dynamic** part of the prescreen workflow. Use it when the
 - privacy entry is missing
 - account deletion /注销 cannot be found
 
+Pair this file with `runtime-must-test.md`, which defines the default dynamic coverage matrix.
+
 ## What Dynamic Can Prove
 
 Dynamic checks can produce evidence that static APK inspection cannot:
@@ -17,6 +19,8 @@ Dynamic checks can produce evidence that static APK inspection cannot:
 - consent prompts appear (or do not) on first run
 - privacy policy / user agreement entries are accessible in-app
 - account deletion path is present and the UI can reach the confirmation page
+- whether the major top-level pages actually open and show plausible content
+- whether obvious test/demo/mock data is leaking into the release build
 
 ## Evidence To Collect
 
@@ -39,7 +43,7 @@ When users report "video cannot load", look for:
 ## Suggested Process
 
 1. `runtime_smoke.py prep` to install/launch and clear logcat
-2. Ask the user to reproduce the issue
-3. `runtime_smoke.py collect` to capture a screenshot and the logcat highlights
-4. Write the report with a dedicated **dynamic** section so static and runtime facts do not mix
-
+2. If login is not available, complete the pre-login page sweep first
+3. If login is available, continue the post-login must-test checklist
+4. `runtime_smoke.py collect` to capture a screenshot and the logcat highlights
+5. Write the report with a dedicated **dynamic** section so static and runtime facts do not mix
