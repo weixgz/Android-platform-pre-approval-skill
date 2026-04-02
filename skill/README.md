@@ -9,6 +9,7 @@
 - `scripts/runtime_smoke.py`：运行态验证的准备与证据收集脚本
 - `scripts/review_runner.py`：总控脚本，串起静态分析、动态准备、证据收集和中文报告生成
 - `references/`：规则、清单、平台差异、动态验证矩阵
+- `references/case-notes/`：真实审核反馈样本，适合沉淀平台打回问题和复查重点
 - `agents/`：技能接入配置
 
 ## 使用顺序
